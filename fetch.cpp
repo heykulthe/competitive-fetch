@@ -1,37 +1,162 @@
-#include "headers/fetch.hpp"
-#include <cstdlib>
+#include <vector>
+#include <string>
 #include <fstream>
+#include <filesystem>
+#include <sstream>
+#include <cstdlib>
+#include <stdexcept>
+#include <array>
+#include <thread>
+#include <mutex>
+#include "headers/fetch.hpp"
 
-static const std::string BASE =
-    "https://raw.githubusercontent.com/heykulthe/cp-templates/main/";
+namespace fs = std::filesystem;
 
-std::vector<std::string> fetch_template_index() {
-    system("curl -s https://api.github.com/repos/heykulthe/cp-templates/git/trees/main?recursive=1 > /tmp/cpf_index.json");
+static std::string exec(const std::string& cmd) {
+    std::array<char, 4096> buf;
+    std::string out;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) throw std::runtime_error("popen failed");
+    while (fgets(buf.data(), buf.size(), pipe))
+        out += buf.data();
+    pclose(pipe);
+    return out;
+}
 
-    std::ifstream in("/tmp/cpf_index.json");
+fs::path cache_path() {
+    const char* home = getenv("HOME");
+    return fs::path(home) / ".cache/cpf/index.txt";
+}
+
+std::vector<std::string> fetch_remote_index() {
+    fs::create_directories(cache_path().parent_path());
+    std::string json = exec(
+        "curl -s https://api.github.com/repos/heykulthe/cp-templates/git/trees/main?recursive=1"
+    );
+
     std::vector<std::string> files;
-    std::string line;
+    std::ofstream cache(cache_path());
 
-    while (getline(in, line)) {
-        if (line.find("\"path\":") != std::string::npos &&
+    std::istringstream ss(json);
+    std::string line;
+    while (std::getline(ss, line)) {
+        if (line.find("\"path\"") != std::string::npos &&
             line.find(".cpp") != std::string::npos) {
             auto start = line.find(": \"") + 3;
             auto end = line.find("\"", start);
-            files.push_back(line.substr(start, end - start));
-            }
+            std::string path = line.substr(start, end - start);
+            cache << path << "\n";
+            files.push_back(path);
+        }
     }
     return files;
 }
 
+std::vector<std::string> load_cache_index() {
+    std::vector<std::string> files;
+    if (!fs::exists(cache_path())) return files;
+    std::ifstream in(cache_path());
+    std::string s;
+    while (std::getline(in, s)) files.push_back(s);
+    return files;
+}
+
+std::vector<std::string> load_or_fetch_index() {
+    auto index = load_cache_index();
+    if (!index.empty()) return index;  // cache hit
+    return fetch_remote_index();       // cache miss
+}
+
+std::string resolve_template(const std::string& query, std::vector<std::string>* index) {
+    std::vector<std::string> local_index;
+    if (index) {
+        local_index = *index;
+    } else {
+        local_index = load_or_fetch_index();
+    }
+
+    for (auto& s : local_index)
+        if (s.find(query) != std::string::npos)
+            return s;
+
+    local_index = fetch_remote_index();
+    for (auto& s : local_index)
+        if (s.find(query) != std::string::npos)
+            return s;
+
+    throw std::runtime_error("No template matched: " + query);
+}
+
 std::string fetch_template(const std::string& path) {
-    std::string cmd = "curl -s " + BASE + path;
-    FILE* pipe = popen(cmd.c_str(), "r");
+    std::string url = "https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + path;
+    std::string content = exec("curl -s " + url);
 
-    std::string content;
-    char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), pipe))
-        content += buffer;
+    if (content.empty()) {
+        throw std::runtime_error("Failed to fetch template: " + path);
+    }
 
-    pclose(pipe);
     return content;
+}
+
+std::vector<std::string> fetch_templates_parallel(const std::vector<std::string>& paths) {
+    if (paths.empty()) return {};
+
+    std::string cmd = "curl -s";
+    for (const auto& path : paths) {
+        cmd += " https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + path;
+    }
+
+    std::string combined = exec(cmd);
+
+    if (paths.size() == 1) {
+        return {combined};
+    }
+
+    std::vector<std::string> results;
+    std::istringstream ss(combined);
+    std::string current;
+    std::string line;
+
+    while (std::getline(ss, line)) {
+        current += line + "\n";
+    }
+
+    return results;
+}
+
+std::vector<std::string> fetch_templates_batch(const std::vector<std::string>& paths) {
+    std::vector<std::string> contents(paths.size());
+    std::vector<std::thread> threads;
+    std::mutex mtx;
+    std::string error_msg;
+
+    for (size_t i = 0; i < paths.size(); ++i) {
+        threads.emplace_back([&, i]() {
+            try {
+                std::string url = "https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + paths[i];
+                std::string content = exec("curl -s " + url);
+
+                if (content.empty()) {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    error_msg = "Failed to fetch template: " + paths[i];
+                    return;
+                }
+
+                contents[i] = content;
+            } catch (const std::exception& e) {
+                std::lock_guard<std::mutex> lock(mtx);
+                error_msg = e.what();
+            }
+        });
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    if (!error_msg.empty()) {
+        throw std::runtime_error(error_msg);
+    }
+
+    return contents;
 }

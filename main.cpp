@@ -1,20 +1,23 @@
 #include "headers/args.hpp"
-#include "headers/fzf.hpp"
 #include "headers/fetch.hpp"
 #include "headers/generator.hpp"
-
-#include <fstream>
+#include <iostream>
 
 int main(int argc, char** argv) {
-    auto args = parse_args(argc, argv);
-    auto index = fetch_template_index();
+    try {
+        auto args = parse_args(argc, argv);
+        auto index = load_or_fetch_index();
 
-    std::vector<std::string> contents;
+        std::vector<std::string> paths;
+        for (auto& q : args.templates) {
+            paths.push_back(resolve_template(q, &index));
+        }
 
-    for (auto& q : args.templates) {
-        auto match = fzf_select(index, q);
-        contents.push_back(fetch_template(match));
+        auto contents = fetch_templates_batch(paths);
+
+        generate_main(args.output_file, contents);
+    } catch (const std::exception& e) {
+        std::cerr << "cpf error: " << e.what() << "\n";
+        return 1;
     }
-
-    generate_main(args.output_file, contents);
 }
