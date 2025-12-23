@@ -1,4 +1,10 @@
-# Installation Guide
+# CPF - Competitive Programming Fetcher
+
+A blazingly fast CLI tool to fetch and integrate competitive programming templates into your code. Stop copy-pasting boilerplates and let `cpf` handle it for you.
+
+## What is CPF?
+
+`cpf` is a tool that fetches data structure and algorithm templates from a remote repository and automatically creates a `main.cpp` file along with an `input.txt` and `output.txt` in your current directory. 
 
 ## Quick Install
 
@@ -11,11 +17,51 @@ cd competitive-fetch
 make install
 ```
 
-That's it! Now you can use `cpf` from anywhere:
+That's it! Now you can use `cpf` from anywhere.
+
+## Usage
+
+### Basic Usage
 
 ```bash
-cpf -t lru dsu -f main.cpp
+cpf -f <output_file> -t <template1> <template2> ...
 ```
+
+### Examples
+
+```bash
+# Fetch a single template
+cpf -f solution.cpp -t dsu
+
+# Fetch multiple templates
+cpf -f solution.cpp -t dsu segment_tree fenwick
+
+# Force refresh to get latest templates
+cpf -f solution.cpp -t dsu --refresh
+```
+
+> Note: cpf fetches templates from [this repository](https://github.com/heykulthe/cp-templates), which does not use GitHub's API. This causes sudden template changes to take a while to reflect even when using the --refresh flag. This is an ongoing TODO to add an env var for the GitHub API and repository url.
+
+### Command-Line Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--file` | `-f` | Output file where templates will be written (required) |
+| `--templates` | `-t` | Space-separated list of template names to fetch (required) |
+| `--refresh` | `-r` | Force refresh cache to fetch latest templates from remote |
+
+### Output Structure
+
+CPF generates a complete C++ file with:
+- With the following headers: `#include <bits/stdc++.h>`
+- Requested templates
+- File I/O setup
+
+### Cache Behavior
+
+- **Location**: `~/.cache/cpf/`
+- **Index Cache**: Expires after 10 minutes
+- **Force Refresh**: Use `-r` or `--refresh` to bypass cache and fetch latest templates
 
 ## Manual Installation
 
@@ -26,14 +72,11 @@ If you prefer manual steps:
 cmake -S . -B build
 cmake --build build
 
-# Install to /usr/local/bin (default)
+# Install to /usr/local/bin
 sudo cmake --install build
-
-# Or install to custom location (no sudo needed)
-cmake --install build --prefix ~/.local
 ```
 
-If you use a custom prefix, make sure `~/.local/bin` is in your PATH:
+If you use a custom prefix, add it to your PATH:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -48,34 +91,26 @@ make uninstall
 sudo cmake --build build --target uninstall
 ```
 
-## Install Locations
+## Requirements
 
-- **Binary**: `/usr/local/bin/cpf` (or `~/.local/bin/cpf` with custom prefix)
-- **Cache**: `~/.cache/cpf/` (created automatically on first run)
+- **CMake**: 3.20 or higher
+- **Compiler**: C++17 compatible (GCC 7+, Clang 5+)
+- **curl**: For fetching templates from remote repository
+- **pthread**: For parallel downloads (usually pre-installed)
 
-## System Requirements
+## Template Repository
 
-- CMake 3.20+
-- C++17 compatible compiler (GCC 7+, Clang 5+)
-- curl (for fetching templates)
-- pthread support
+Templates are fetched from: [github.com/heykulthe/cp-templates](https://github.com/heykulthe/cp-templates)
 
-## Verifying Installation
+## Troubleshooting
 
+### Templates not updating?
+
+Use the refresh flag to force fetch latest templates:
 ```bash
-# Check if cpf is installed
-which cpf
-
-# Test it
-cpf -t lru -f test.cpp
+cpf -f solution.cpp -t dsu --refresh
 ```
 
-## Building from Source (Development)
+### "No template matched" error?
 
-```bash
-# Build without installing
-make build
-
-# Run from build directory
-./build/cpf -t lru -f sample.cpp
-```
+List available templates by checking the repository, or try a more specific query string.
