@@ -29,16 +29,19 @@ fs::path cache_path() {
     return fs::path(home) / ".cache/cpf/index.txt";
 }
 
+// check if cache is stale (older than 1 hour)
 bool is_cache_stale() {
     if (!fs::exists(cache_path())) return true;
 
     auto last_write = fs::last_write_time(cache_path());
     auto now = fs::file_time_type::clock::now();
-    auto age = std::chrono::duration_cast<std::chrono::minutes>(now - last_write);
+    auto age = std::chrono::duration_cast<std::chrono::hours>(now - last_write);
 
-    return age.count() >= 10;
+    // Cache expires after 1 hour
+    return age.count() >= 1;
 }
 
+// fetches remote repo tree and rewrites cache
 std::vector<std::string> fetch_remote_index() {
     fs::create_directories(cache_path().parent_path());
     std::string json = exec(
@@ -63,6 +66,7 @@ std::vector<std::string> fetch_remote_index() {
     return files;
 }
 
+// load cache from disk
 std::vector<std::string> load_cache_index() {
     std::vector<std::string> files;
     if (!fs::exists(cache_path())) return files;
@@ -72,6 +76,7 @@ std::vector<std::string> load_cache_index() {
     return files;
 }
 
+// main entry: lazy refresh with staleness check
 std::vector<std::string> load_or_fetch_index(bool force_refresh) {
     if (force_refresh) return fetch_remote_index();
 
@@ -80,6 +85,7 @@ std::vector<std::string> load_or_fetch_index(bool force_refresh) {
     return fetch_remote_index();
 }
 
+// resolve template with lazy refresh
 std::string resolve_template(const std::string& query, std::vector<std::string>* index) {
     std::vector<std::string> local_index;
     if (index) {
@@ -92,6 +98,7 @@ std::string resolve_template(const std::string& query, std::vector<std::string>*
         if (s.find(query) != std::string::npos)
             return s;
 
+    // not found in cache → fetch remote once and try again
     local_index = fetch_remote_index();
     for (auto& s : local_index)
         if (s.find(query) != std::string::npos)
@@ -100,6 +107,7 @@ std::string resolve_template(const std::string& query, std::vector<std::string>*
     throw std::runtime_error("No template matched: " + query);
 }
 
+// fetch the actual template content from GitHub
 std::string fetch_template(const std::string& path) {
     std::string url = "https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + path;
     std::string content = exec("curl -s " + url);
@@ -111,17 +119,28 @@ std::string fetch_template(const std::string& path) {
     return content;
 }
 
+// Batch fetch all templates in parallel
 std::vector<std::string> fetch_templates_batch(const std::vector<std::string>& paths) {
     std::vector<std::string> contents(paths.size());
     std::vector<std::thread> threads;
     std::mutex mtx;
     std::string error_msg;
 
+    // Get current timestamp for cache busting
+    auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+
     for (size_t i = 0; i < paths.size(); ++i) {
-        threads.emplace_back([&, i]() {
+        threads.emplace_back([&, i, timestamp]() {
             try {
-                std::string url = "https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + paths[i];
-                std::string content = exec("curl -s " + url);
+                // Add timestamp query parameter and aggressive cache-busting headers
+                std::string url = "https://raw.githubusercontent.com/heykulthe/cp-templates/main/"
+                                + paths[i] + "?t=" + std::to_string(timestamp);
+                std::string cmd = "curl -s "
+                                "-H 'Cache-Control: no-cache, no-store, must-revalidate' "
+                                "-H 'Pragma: no-cache' "
+                                "-H 'Expires: 0' "
+                                "'" + url + "'";
+                std::string content = exec(cmd);
 
                 if (content.empty()) {
                     std::lock_guard<std::mutex> lock(mtx);
