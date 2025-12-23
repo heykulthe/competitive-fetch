@@ -40,7 +40,11 @@ cpf -f solution.cpp -t dsu segment_tree fenwick
 cpf -f solution.cpp -t dsu --refresh
 ```
 
-> Note: cpf fetches templates from [this repository](https://github.com/heykulthe/cp-templates), which does not use GitHub's API. This causes sudden template changes to take a while to reflect even when using the --refresh flag. This is an ongoing TODO to add an env var for the GitHub API and repository url.
+## Template Repository
+
+Templates are fetched from: [github.com/heykulthe/cp-templates](https://github.com/heykulthe/cp-templates)
+
+To use your own repositories, you need to add an environment variable: `CPF_REPO`. This helps `cpf` always use your own repository instead of the default one. Note that changes have been tested only for GitHub repositories, however support has been added for BitBucket, GitLab, and custom repos too. Custom repositories should not end with a trailing (`/`) slash.
 
 ### Command-Line Options
 
@@ -60,7 +64,7 @@ CPF generates a complete C++ file with:
 ### Cache Behavior
 
 - **Location**: `~/.cache/cpf/`
-- **Index Cache**: Expires after 10 minutes
+- **Index Cache**: Expires after 30 minutes
 - **Force Refresh**: Use `-r` or `--refresh` to bypass cache and fetch latest templates
 
 ## Manual Installation
@@ -97,10 +101,6 @@ sudo cmake --build build --target uninstall
 - **Compiler**: C++17 compatible (GCC 7+, Clang 5+)
 - **curl**: For fetching templates from remote repository
 - **pthread**: For parallel downloads (usually pre-installed)
-
-## Template Repository
-
-Templates are fetched from: [github.com/heykulthe/cp-templates](https://github.com/heykulthe/cp-templates)
 
 ## Troubleshooting
 
