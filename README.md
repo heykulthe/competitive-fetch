@@ -1,4 +1,4 @@
-# CPF - Competitive Programming Fetcher
+# CPF - Competitive Programming Fetch
 
 A blazingly fast CLI tool to fetch and integrate competitive programming templates into your code. Stop copy-pasting boilerplates and let `cpf` handle it for you.
 
