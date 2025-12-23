@@ -2,11 +2,12 @@
 #include "headers/fetch.hpp"
 #include "headers/generator.hpp"
 #include <iostream>
+#include <chrono>
 
 int main(int argc, char** argv) {
     try {
         auto args = parse_args(argc, argv);
-        auto index = load_or_fetch_index();
+        auto index = load_or_fetch_index(args.force_refresh);
 
         std::vector<std::string> paths;
         for (auto& q : args.templates) {

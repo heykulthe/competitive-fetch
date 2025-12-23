@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 
-std::vector<std::string> load_or_fetch_index();
+std::vector<std::string> load_or_fetch_index(bool force_refresh = false);
 std::string resolve_template(const std::string& query,
                              std::vector<std::string>* index = nullptr);
 std::string fetch_template(const std::string& path);

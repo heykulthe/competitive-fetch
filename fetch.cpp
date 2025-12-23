@@ -8,6 +8,7 @@
 #include <array>
 #include <thread>
 #include <mutex>
+#include <chrono>
 #include "headers/fetch.hpp"
 
 namespace fs = std::filesystem;
@@ -26,6 +27,16 @@ static std::string exec(const std::string& cmd) {
 fs::path cache_path() {
     const char* home = getenv("HOME");
     return fs::path(home) / ".cache/cpf/index.txt";
+}
+
+bool is_cache_stale() {
+    if (!fs::exists(cache_path())) return true;
+
+    auto last_write = fs::last_write_time(cache_path());
+    auto now = fs::file_time_type::clock::now();
+    auto age = std::chrono::duration_cast<std::chrono::minutes>(now - last_write);
+
+    return age.count() >= 10;
 }
 
 std::vector<std::string> fetch_remote_index() {
@@ -61,10 +72,12 @@ std::vector<std::string> load_cache_index() {
     return files;
 }
 
-std::vector<std::string> load_or_fetch_index() {
+std::vector<std::string> load_or_fetch_index(bool force_refresh) {
+    if (force_refresh) return fetch_remote_index();
+
     auto index = load_cache_index();
-    if (!index.empty()) return index;  // cache hit
-    return fetch_remote_index();       // cache miss
+    if (!index.empty() && !is_cache_stale()) return index;
+    return fetch_remote_index();
 }
 
 std::string resolve_template(const std::string& query, std::vector<std::string>* index) {
@@ -72,7 +85,7 @@ std::string resolve_template(const std::string& query, std::vector<std::string>*
     if (index) {
         local_index = *index;
     } else {
-        local_index = load_or_fetch_index();
+        local_index = load_or_fetch_index(false);
     }
 
     for (auto& s : local_index)
@@ -96,32 +109,6 @@ std::string fetch_template(const std::string& path) {
     }
 
     return content;
-}
-
-std::vector<std::string> fetch_templates_parallel(const std::vector<std::string>& paths) {
-    if (paths.empty()) return {};
-
-    std::string cmd = "curl -s";
-    for (const auto& path : paths) {
-        cmd += " https://raw.githubusercontent.com/heykulthe/cp-templates/main/" + path;
-    }
-
-    std::string combined = exec(cmd);
-
-    if (paths.size() == 1) {
-        return {combined};
-    }
-
-    std::vector<std::string> results;
-    std::istringstream ss(combined);
-    std::string current;
-    std::string line;
-
-    while (std::getline(ss, line)) {
-        current += line + "\n";
-    }
-
-    return results;
 }
 
 std::vector<std::string> fetch_templates_batch(const std::vector<std::string>& paths) {
